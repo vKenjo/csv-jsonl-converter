@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV to JSON Lines Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .file-input-area {
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            background: #fafafa;
+            transition: all 0.3s ease;
+        }
+        .file-input-area:hover {
+            border-color: #007bff;
+            background: #f0f8ff;
+        }
+        .file-input-area.dragover {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .file-label {
+            cursor: pointer;
+            color: #007bff;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .file-label:hover {
+            color: #0056b3;
+        }
+        .convert-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            display: none;
+            margin: 20px auto;
+        }
+        .convert-btn:hover {
+            background: #0056b3;
+        }
+        .convert-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .download-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            display: none;
+            margin: 20px auto;
+            text-decoration: none;
+        }
+        .download-btn:hover {
+            background: #1e7e34;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .preview {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+        .file-info {
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CSV to JSON Lines Converter</h1>
+        <p>Upload your CSV file and convert it to JSON Lines format. Each row will become a separate JSON object on its own line.</p>
+        
+        <div class="file-input-area" id="fileInputArea">
+            <label for="csvFile" class="file-label">
+                Click here to select your CSV file<br>
+                <small style="color: #666;">or drag and drop it here</small>
+            </label>
+            <input type="file" id="csvFile" accept=".csv" />
+        </div>
+        
+        <div id="fileInfo" class="file-info" style="display:none;"></div>
+        
+        <button class="convert-btn" id="convertBtn" onclick="convertFile()">Convert to JSON Lines</button>
+        
+        <div id="status"></div>
+        <div id="preview"></div>
+        <a id="downloadBtn" class="download-btn" style="display:none;">Download JSON Lines File</a>
+    </div>
+
+    <script>
+        let selectedFile = null;
+        
+        const fileInput = document.getElementById('csvFile');
+        const fileInputArea = document.getElementById('fileInputArea');
+        const convertBtn = document.getElementById('convertBtn');
+        const fileInfo = document.getElementById('fileInfo');
+        
+        // File input handling
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        // Drag and drop handling
+        fileInputArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileInputArea.classList.add('dragover');
+        });
+        
+        fileInputArea.addEventListener('dragleave', () => {
+            fileInputArea.classList.remove('dragover');
+        });
+        
+        fileInputArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileInputArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect({ target: { files: files } });
+            }
+        });
+        
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                selectedFile = file;
+                fileInfo.style.display = 'block';
+                fileInfo.innerHTML = `
+                    <strong>Selected file:</strong> ${file.name}<br>
+                    <strong>Size:</strong> ${(file.size / 1024 / 1024).toFixed(2)} MB<br>
+                    <strong>Type:</strong> ${file.type || 'text/csv'}
+                `;
+                convertBtn.style.display = 'block';
+            }
+        }
+        
+        async function convertFile() {
+            if (!selectedFile) {
+                showStatus('Please select a CSV file first.', 'error');
+                return;
+            }
+            
+            const statusDiv = document.getElementById('status');
+            const previewDiv = document.getElementById('preview');
+            const downloadBtn = document.getElementById('downloadBtn');
+            
+            try {
+                showStatus('Reading and converting file...', 'info');
+                convertBtn.disabled = true;
+                convertBtn.textContent = 'Converting...';
+                
+                // Read the file
+                const fileContent = await readFileAsText(selectedFile);
+                
+                // Parse CSV with better handling
+                const jsonLines = parseCSVToJSONLines(fileContent);
+                
+                if (jsonLines.lines === '') {
+                    showStatus('No valid data found in the CSV file.', 'error');
+                    return;
+                }
+                
+                // Show success status
+                showStatus(`
+                    Conversion completed!<br>
+                    Total rows converted: ${jsonLines.count}<br>
+                    File size: ${(jsonLines.lines.length / 1024 / 1024).toFixed(2)} MB
+                `, 'success');
+                
+                // Show preview
+                const previewLines = jsonLines.lines.split('\n').slice(0, 5).join('\n');
+                previewDiv.innerHTML = `
+                    <h3>Preview (first 5 lines):</h3>
+                    <div class="preview">${previewLines}</div>
+                `;
+                
+                // Create download
+                const blob = new Blob([jsonLines.lines], { type: 'application/jsonl' });
+                const url = URL.createObjectURL(blob);
+                
+                downloadBtn.href = url;
+                downloadBtn.download = selectedFile.name.replace('.csv', '.jsonl');
+                downloadBtn.style.display = 'block';
+                downloadBtn.textContent = `Download ${selectedFile.name.replace('.csv', '.jsonl')}`;
+                
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            } finally {
+                convertBtn.disabled = false;
+                convertBtn.textContent = 'Convert to JSON Lines';
+            }
+        }
+        
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = e => reject(new Error('Failed to read file'));
+                reader.readAsText(file, 'utf-8');
+            });
+        }
+        
+        function parseCSVToJSONLines(csvContent) {
+            const lines = csvContent.split('\n');
+            let jsonLines = '';
+            let validRowCount = 0;
+            
+            if (lines.length === 0) {
+                throw new Error('CSV file is empty');
+            }
+            
+            // Parse header
+            const headerLine = lines[0].trim();
+            const headers = parseCSVLine(headerLine);
+            
+            // Process data rows
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                
+                try {
+                    const values = parseCSVLine(line);
+                    
+                    // Create JSON object
+                    const jsonObj = {};
+                    for (let j = 0; j < headers.length; j++) {
+                        const header = headers[j];
+                        const value = j < values.length ? values[j] : '';
+                        jsonObj[header] = value;
+                    }
+                    
+                    // Add to JSON Lines if not completely empty
+                    const hasContent = Object.values(jsonObj).some(val => val.trim() !== '');
+                    if (hasContent) {
+                        jsonLines += JSON.stringify(jsonObj) + '\n';
+                        validRowCount++;
+                    }
+                } catch (error) {
+                    console.warn(`Skipped malformed line ${i + 1}:`, line);
+                }
+            }
+            
+            return { lines: jsonLines, count: validRowCount };
+        }
+        
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            let i = 0;
+            
+            while (i < line.length) {
+                const char = line[i];
+                
+                if (char === '"') {
+                    if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
+                        // Escaped quote
+                        current += '"';
+                        i += 2;
+                    } else {
+                        // Toggle quote state
+                        inQuotes = !inQuotes;
+                        i++;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                    i++;
+                } else {
+                    current += char;
+                    i++;
+                }
+            }
+            
+            result.push(current.trim());
+            return result;
+        }
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+    </script>
+</body>
+</html>
